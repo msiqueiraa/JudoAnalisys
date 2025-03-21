@@ -5,11 +5,9 @@ name = "pypi"
 
 [packages]
 streamlit = "*"
-cv2 = "*"
+opencv-python = "*"
 numpy = "*"
 mediapipe = "*"
-tempfile = "*"
-math = "*"
 
 [dev-packages]
 
