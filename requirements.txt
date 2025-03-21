@@ -1,6 +1,0 @@
- streamlit
- cv2
- numpy 
- mediapipe 
- tempfile
- math
