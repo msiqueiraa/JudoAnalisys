@@ -66,10 +66,10 @@ similaridade no fim) e **baixado em PDF**.
    - A opção **"Manter identidade na sobreposição"** evita "pular" para o outro
      atleta quando os corpos se fundem em uma única detecção.
    - Uma **faixa de verificação** mostra a pessoa rastreada em vários instantes
-     do trecho. Se o rastreamento pegou o atleta errado, use
-     **"Corrigir pessoa"**: escolha um instante, indique a pessoa correta (lista
-     ou clique) e o app reanalisa ancorando a identidade nesse ponto (para frente
-     e para trás).
+     do trecho. Se o rastreamento pegou o atleta errado, **clique na miniatura**
+     do instante errado: a seção **"Corrigir pessoa"** vai para esse ponto e já
+     detecta as pessoas ali — escolha a correta (lista ou clique) e o app
+     reanalisa ancorando a identidade nesse ponto (para frente e para trás).
    - As métricas são medidas sobre o trecho escolhido.
    - O **frame-chave** (imagem anotada e PDF) é, por padrão, o de **maior
      velocidade da mão**; o slider **"Instante do golpe"** permite parar em
@@ -161,10 +161,11 @@ O navegador abre em `http://localhost:8501`.
 8. Confira a **faixa de verificação** do rastreamento. Se o esqueleto tiver
    pulado para o outro atleta (ou marcado só o *uke* nas costas), você tem três
    opções:
+   - **clique na miniatura** do frame errado — a seção **"Corrigir pessoa"** vai
+     para aquele instante e já detecta as pessoas nele; indique a correta (lista
+     ou clique) e clique em **"Reanalisar com esta pessoa"**;
    - clique no **X** abaixo do frame errado — os frames daquele trecho saem do
-     cálculo, dos gráficos e do score;
-   - abra **"Corrigir pessoa"**, escolha o instante e a pessoa correta (lista ou
-     clique) e clique em **"Reanalisar com esta pessoa"**; ou
+     cálculo, dos gráficos e do score; ou
    - abra **"Descartar frames com erro"**, informe um ou mais intervalos em
      `mm:ss` (ex.: `01:05`–`01:09`) e clique em
      **"Reanalisar descartando esses trechos"**.
@@ -228,6 +229,10 @@ manualmente**:
   vizinhas);
 - ou abra **"Descartar frames com erro"** (em cada vídeo) e informe intervalos em
   `mm:ss` (aceita centésimos, ex.: `00:01.55`).
+
+E, para **trocar a pessoa** de um trecho em vez de descartá-lo, clique na
+**miniatura** do instante errado: a seção **"Corrigir pessoa"** vai para esse
+ponto (com as pessoas já detectadas ali) e a reanálise ancora a identidade nele.
 
 Os frames descartados saem do cálculo, dos gráficos e do score; o total aparece
 no painel e o botão **"Restaurar todos os frames"** desfaz os descartes. Isso é
@@ -330,7 +335,7 @@ O que já está pronto no repositório:
 | "Modelo do MediaPipe não encontrado" | `pose_landmarker_full.task` ausente | Mantenha o arquivo na raiz do projeto |
 | "A dependência 'yt-dlp' não está instalada" | URL sem a lib | `pip install yt-dlp` |
 | Nenhuma pessoa detectada | Iluminação/enquadramento ruim | Ajuste o trecho ou o vídeo |
-| Pessoa errada rastreada | Oclusão/sobreposição no golpe (ex.: *uke* de costas marcado como *tori*) | Confira a **faixa de verificação** e clique no **X** do frame errado; use **"Corrigir pessoa"** para trocar a identidade; mantenha **"Manter identidade na sobreposição"** ligado; se os kimonos tiverem cores diferentes, ligue a opção de cor do kimono |
+| Pessoa errada rastreada | Oclusão/sobreposição no golpe (ex.: *uke* de costas marcado como *tori*) | Confira a **faixa de verificação**: clique na **miniatura** do frame errado para abrir a correção já naquele instante (ou no **X** para descartá-lo); mantenha **"Manter identidade na sobreposição"** ligado; se os kimonos tiverem cores diferentes, ligue a opção de cor do kimono |
 | Rastreamento alterna entre os dois atletas | O detector funde os dois corpos em uma caixa só | Já tratado: o app refaz a detecção nas metades do quadro quando o frame traz menos de dois atletas; ligue a opção de **cor do kimono** se eles tiverem cores diferentes |
 | Vídeo de URL não baixa | Link privado/bloqueado | Use upload do arquivo |
 | Clique na imagem não funciona | `streamlit-image-coordinates` ausente | `pip install streamlit-image-coordinates`; sem ele a correção continua pela lista |

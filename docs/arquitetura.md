@@ -126,9 +126,11 @@ DTOs (`application/dto.py`): `PersonPreview`, `PersonSelection`, `TrackingSample
 - `app.py` — orquestra o fluxo em Streamlit.
 - `components/` — `video_input` (upload/URL + **vídeos de exemplo**),
   `person_selection` (slider + **caixas `mm:ss.cc`**), `pose_selection`
-  (**seleção clicável** compartilhada), `results`, `comparison_clip`,
-  `tracking_review` (faixa de verificação **com X para descartar frames** +
-  correção), `exclusion` (**descarte manual por `mm:ss`**) e `report`.
+  (**seleção clicável** compartilhada, usada também na faixa), `results`,
+  `comparison_clip`,
+  `tracking_review` (faixa de verificação com **miniaturas clicáveis** — o clique
+  leva a correção para aquele instante — e **X para descartar frames**),
+  `exclusion` (**descarte manual por `mm:ss`**) e `report`.
 - `resources.py` — estimador cacheado (`st.cache_resource`) e leitura de metadados.
 - `../formatting.py` — formatação e **parse** de tempo (`mm:ss`, `mm:ss.cc`)
   compartilhados com
@@ -249,6 +251,11 @@ cor do kimono antes de entregar as poses.
   que o rastreamento encontrou a pessoa **e** a pose tem landmarks visíveis
   suficientes (`MIN_VISIBLE_LANDMARKS`). Frames sem rastreamento não entram em
   `AnalysisRun.frames`, então não contaminam médias, gráficos nem o score.
+- **Correção pela faixa**: as miniaturas da faixa de verificação são clicáveis
+  (`render_clickable_image`, largura `stretch`). O clique converte o instante da
+  amostra para o domínio do slider (`pick_offset`: segundos a partir do início do
+  trecho, alinhados ao passo e limitados às bordas) e marca a amostra; a seção
+  **"Corrigir pessoa"** já abre no ponto com as pessoas detectadas nele.
 - **Descarte manual de frames**: quando um trecho fica "bugado" (o rastreamento
   troca de atleta — ex.: *uke* de costas marcado como *tori*), o usuário pode
   clicar no **X** abaixo da amostra da faixa de verificação (o X descarta a

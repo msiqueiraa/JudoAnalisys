@@ -54,7 +54,7 @@ def render_pose_selector(
     value = streamlit_image_coordinates(
         to_rgb(annotated), width=SELECT_WIDTH, key=f"{key}_click"
     )
-    if _is_new_click(key, value):
+    if is_new_click(key, value):
         width = value.get("width") or SELECT_WIDTH
         height = value.get("height") or SELECT_WIDTH
         current = nearest_pose(poses, value["x"] / float(width), value["y"] / float(height))
@@ -73,6 +73,27 @@ def pose_label(index: int, pose: Pose) -> str:
     return f"Pessoa {index + 1} ({pose.gi_color.name()})"
 
 
+def click_enabled() -> bool:
+    """Indica se o clique sobre a imagem esta disponivel neste ambiente."""
+
+    return _HAS_CLICK
+
+
+def render_clickable_image(image, key: str):
+    """Desenha uma imagem clicavel e devolve o ultimo clique (ou ``None``).
+
+    O retorno e o dicionario do componente (com ``unix_time``), o mesmo tratado
+    por :func:`is_new_click`; sem o componente instalado apenas a imagem e
+    desenhada e o retorno e ``None``. A legenda fica a cargo de quem chama, para
+    poder refletir o clique no mesmo rerun. A largura acompanha a coluna.
+    """
+
+    if not _HAS_CLICK:
+        st.image(to_rgb(image), width="stretch")
+        return None
+    return streamlit_image_coordinates(to_rgb(image), width="stretch", key=key)
+
+
 def nearest_pose(poses: list[Pose], x: float, y: float) -> int:
     """Indice da pose cujo centro esta mais proximo do ponto clicado (0..1)."""
 
@@ -89,7 +110,7 @@ def nearest_pose(poses: list[Pose], x: float, y: float) -> int:
     return best_index
 
 
-def _is_new_click(key: str, value) -> bool:
+def is_new_click(key: str, value) -> bool:
     """Detecta um clique novo (evita reprocessar o mesmo evento a cada rerun)."""
 
     if not value or "unix_time" not in value:
