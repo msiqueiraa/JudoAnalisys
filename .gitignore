@@ -1,0 +1,25 @@
+# Python
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+
+# Ambientes virtuais
+.venv/
+venv/
+env/
+
+# Ferramentas
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Cache de videos baixados de URLs
+.cache/
+
+# Relatorios gerados
+*.pdf
+
+# Sistema
+.DS_Store
+Thumbs.db
