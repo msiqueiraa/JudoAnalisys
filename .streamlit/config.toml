@@ -1,0 +1,10 @@
+# Configuracao lida tambem pelo Streamlit Community Cloud.
+# Mantenha este arquivo pequeno: o que vale para todos os ambientes fica aqui.
+
+[server]
+# Videos de golpe (1080p, 1-2 min) passam do padrao de 200 MB.
+maxUploadSize = 500
+
+[browser]
+# Telemetria desligada no app publicado.
+gatherUsageStats = false
