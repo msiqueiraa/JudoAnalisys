@@ -44,7 +44,7 @@ class TrackingSample:
 
 @dataclass(slots=True)
 class AnalysisResult:
-    """Resultado da analise de um video pronto para exibicao/relatorio."""
+    """Resultado da analise de um video (ou foto) pronto para exibicao/relatorio."""
 
     run: AnalysisRun
     key_frame: np.ndarray

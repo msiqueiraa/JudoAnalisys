@@ -57,12 +57,12 @@ class ComparisonResult:
         return None
 
     def analyzed_metrics(self) -> list[MetricComparison]:
-        """Metricas que puderam ser comparadas (valor presente nos dois videos)."""
+        """Metricas que puderam ser comparadas (valor presente nos dois lados)."""
 
         return [metric for metric in self.metrics if metric.similarity is not None]
 
     def excluded_metrics(self) -> list[MetricComparison]:
-        """Metricas descartadas por faltar valor em um dos videos."""
+        """Metricas descartadas por faltar valor em um dos lados."""
 
         return [
             metric

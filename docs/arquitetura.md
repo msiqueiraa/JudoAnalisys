@@ -12,14 +12,16 @@ interface. As dependências sempre apontam **para dentro**.
 ```
 ┌──────────────────────────────────────────────────────────────┐
 │                      presentation (Streamlit)                 │
-│   app.py · components/ (video_input, person_selection,        │
-│                         tracking_review, exclusion, results)  │
-│   · resources.py · report                                     │
+│   app.py (abas Vídeo/Foto/Foto x vídeo) · analysis.py ·       │
+│   components/ (video_input, photo_input, photo_analysis,      │
+│                mixed_analysis, person_selection,              │
+│                tracking_review, exclusion, results_view, ...) │
 └───────────────────────────────┬──────────────────────────────┘
                                 │ usa
 ┌───────────────────────────────▼──────────────────────────────┐
 │                         application                           │
-│   use_cases/ (DetectPeople, AnalyzePerson, CompareAnalyses)   │
+│   use_cases/ (DetectPeople, AnalyzePerson, AnalyzePhoto,      │
+│               CompareAnalyses)                                │
 │   ports/  (IPoseEstimator, IVideoReader, IVideoSource,        │
 │            IReportWriter) · dto.py                            │
 └───────────────────────────────┬──────────────────────────────┘
@@ -28,7 +30,8 @@ interface. As dependências sempre apontam **para dentro**.
 │      infrastructure       │   │           domain             │
 │  MediaPipe, OpenCV,       │   │  entities · value_objects ·  │
 │  yt-dlp, ReportLab,       │   │  services (Angle, Speed,     │
-│  FrameAnnotator           │   │  PersonTracker, Comparator)  │
+│  FrameAnnotator,          │   │  PersonTracker, Comparator)  │
+│  SingleImageReader        │   │                              │
 └───────────────────────────┘   └──────────────────────────────┘
 ```
 
@@ -48,7 +51,7 @@ interface. As dependências sempre apontam **para dentro**.
 | `entities/landmark.py` | `Landmark`: ponto corporal normalizado |
 | `entities/pose.py` | `Pose` (33 landmarks) e enum `PoseLandmark` |
 | `entities/video.py` | `Video` (metadados) e `TimeRange` |
-| `entities/analysis.py` | `FrameMetrics` (inclui a pose rastreada), `MetricStats`, `AnalysisRun` |
+| `entities/analysis.py` | `FrameMetrics` (inclui a pose rastreada), `MetricStats`, `AnalysisRun` (com a flag `is_photo`) |
 | `value_objects/joint_angles.py` | `JointAngles`: joelho, coluna, pescoço, abertura |
 | `value_objects/speed.py` | `Speed`: px/s e alturas de corpo/s |
 | `value_objects/gi_color.py` | `GiColor`: cor do kimono em LAB (`cluster_two`, `median`) |
@@ -59,7 +62,7 @@ interface. As dependências sempre apontam **para dentro**.
 | `services/person_tracker.py` | Rastreamento da pessoa escolhida (pelve + predição + IoU + escala) |
 | `services/pair_tracker.py` | Rastreamento simultâneo dos dois atletas (atribuição global) |
 | `services/pose_dedup.py` | Deduplicação de poses do mesmo corpo |
-| `services/pose_comparator.py` | Similaridade entre referência e analisado |
+| `services/pose_comparator.py` | Similaridade entre referência e analisado (nunca exige mais amostras do que a análise tem — uma foto passa) |
 | `services/statistics.py` | Agregação (média, pico, desvio) e frame-chave |
 | `metrics_catalog.py` | Catálogo central (rótulo, unidade, escala) e `SPEED_METRICS` |
 
@@ -76,7 +79,9 @@ Portas (interfaces) em `application/ports/`:
 
 `application/pose_detection.py` (`PoseDetector`) decora um `IPoseEstimator` com
 deduplicação, segunda tentativa nas metades do quadro e medição de cor, de modo
-que os casos de uso recebam detecções já limpas.
+que os casos de uso recebam detecções já limpas. O módulo também expõe
+`is_measurable_pose(pose)`, usado tanto pelo rastreamento quanto pela análise de
+foto (pose com landmarks visíveis suficientes para medir ângulos).
 
 Casos de uso em `application/use_cases/`:
 
@@ -87,6 +92,11 @@ Casos de uso em `application/use_cases/`:
   diferentes, faz uma segunda passagem de rastreamento com a cor como pista.
   Recebe `key_frame_time` para reaproveitar o frame-chave escolhido pelo usuário.
 - `CompareAnalysesUseCase` — compara referência × analisado.
+- `AnalyzePhotoUseCase` — mede os ângulos do atleta escolhido em uma **foto** e
+  monta um `AnalysisRun` com um **único frame** (`is_photo=True`,
+  `hand_speed=None`): assim o painel, a comparação e o PDF funcionam sem um
+  caminho paralelo. Rejeita a foto quando a pose tem pontos visíveis de menos ou
+  quando nenhum ângulo pode ser medido.
 - `BuildComparisonClipUseCase` — monta o recorte lado a lado para o player,
   passando a similaridade geral para o cartão final.
 - `SelectKeyFrameUseCase` — troca o frame-chave do golpe (pico de velocidade ou
@@ -117,17 +127,38 @@ DTOs (`application/dto.py`): `PersonPreview`, `PersonSelection`, `TrackingSample
   escolhida** desenhado sobre cada lado (a pose vem de `FrameMetrics.pose`).
 - `video/UrlVideoSource` — prioriza formatos **progressivos** (evita `ffprobe`)
   e aponta o `ffmpeg_location` para o binário do `imageio-ffmpeg`.
+- `image/SingleImageReader` — trata uma **foto** como um "vídeo" de um único
+  quadro (implementa `IVideoReader`): `frame_at`/`frames` devolvem a imagem e os
+  metadados saem com `frame_count=1` e `fps=PHOTO_FPS`. É o que permite
+  reaproveitar `DetectPeopleUseCase` inteiro (deduplicação, segunda tentativa e
+  cor do kimono) na análise de foto.
+- `image/UploadPhotoSource` — grava a imagem enviada em `.cache/photos/`.
+- `files.safe_name` — nome de arquivo seguro, compartilhado pelos uploads de
+  vídeo e de foto.
 - `render/FrameAnnotator` — desenha esqueleto, seleção e métricas.
 - `report/PdfReportWriter` — PDF com tabela, frame-chave e gráficos empilhados
   (ReportLab + Matplotlib).
 
 ### `presentation` — interface
 
-- `app.py` — orquestra o fluxo em Streamlit.
+- `app.py` — orquestra o fluxo em Streamlit: cria as **três abas**
+  (`st.tabs(["Vídeo", "Foto", "Foto x vídeo"], on_change="rerun", key=...)`) e
+  desenha a aba de vídeo. Só a aba **aberta** (`tab.open`) roda o trabalho
+  pesado (tabelas, gráficos, PDF e recorte); os controles das outras continuam
+  sendo criados, para o Streamlit não descartar o que o usuário já escolheu.
+- `analysis.py` — execução de vídeo compartilhada pelas abas: `analyze_video`,
+  `reanalyze_video` (correção de pessoa/descarte de frames), os *callbacks* da
+  faixa de verificação, as **dicas de cor do kimono** por lado
+  (`remember_kimono_hint`/`kimono_hint`) e `reset_key_frame_sliders`. Não importa
+  componentes (evita ciclo de importação).
 - `components/` — `video_input` (upload/URL + **vídeos de exemplo**),
-  `person_selection` (slider + **caixas `mm:ss.cc`**), `pose_selection`
-  (**seleção clicável** compartilhada, usada também na faixa), `results`,
-  `comparison_clip`,
+  `photo_input` (upload de imagem), `person_selection` (slider +
+  **caixas `mm:ss.cc`**), `photo_analysis` (aba **Foto**: detecção cacheada por
+  assinatura do arquivo, seleção do atleta e comparação das duas fotos),
+  `mixed_analysis` (aba **Foto x vídeo**), `pose_selection`
+  (**seleção clicável** compartilhada, usada também na faixa), `results`
+  (painel + tabela/gráficos), `results_view` (`SideSpec` + `render_results_view`,
+  o desenho do resultado comum às três abas), `comparison_clip`,
   `tracking_review` (faixa de verificação com **miniaturas clicáveis** — o clique
   leva a correção para aquele instante — e **X para descartar frames**),
   `exclusion` (**descarte manual por `mm:ss`**) e `report`.
@@ -176,6 +207,14 @@ URL/Upload ──► IVideoSource ──► caminho local
 O `IPoseEstimator` usado pelos dois casos de uso é o `PoseDetector`, que
 acrescenta deduplicação, a segunda tentativa nas metades do quadro e a medição da
 cor do kimono antes de entregar as poses.
+
+Na **análise de foto** o caminho é o mesmo até `PersonPreview`: o que muda é o
+leitor — `SingleImageReader` devolve a mesma imagem em `frame_at`/`frames`, então
+a detecção e a escolha do atleta são idênticas às do vídeo. A partir da pose
+escolhida, `AnalyzePhotoUseCase` mede os ângulos e monta um `AnalysisRun` de um
+quadro, que segue para `CompareAnalysesUseCase` e `PdfReportWriter` como qualquer
+outro resultado — sem recorte comparativo (não há dois vídeos) e sem série
+temporal (não há evolução a mostrar).
 
 ## Decisões de projeto
 
@@ -268,10 +307,12 @@ cor do kimono antes de entregar as poses.
   continua processando o trecho todo (só o cálculo ignora os frames excluídos),
   então a exclusão não desestabiliza a identidade.
 - **Métrica só entra com dados suficientes**: além de precisar de valor nos dois
-  vídeos, a métrica precisa de um mínimo de amostras em cada execução
+  lados, a métrica precisa de um mínimo de amostras em cada execução
   (`MIN_METRIC_SAMPLES` e `MIN_METRIC_COVERAGE`); dados medidos em pouquíssimos
-  frames (espúrios) são descartados. As descartadas ficam em
-  `excluded_metrics()` e nunca influenciam o score.
+  frames (espúrios) são descartados. O mínimo nunca passa do total de frames da
+  análise (`min(required, total)`), então uma **foto** (um quadro) é comparável
+  sem regra especial. As descartadas ficam em `excluded_metrics()` e nunca
+  influenciam o score.
 - **Similaridade geral = média das barras**: `overall_similarity` é exatamente a
   média das similaridades de `analyzed_metrics()`; o gráfico "Similaridade por
   métrica" exibe essa média como linha de referência, garantindo que o número do
@@ -310,7 +351,22 @@ cor do kimono antes de entregar as poses.
   quadro** do vídeo naquele instante (`nearest_frame` acomoda o instante entre
   dois frames). A escolha sobrevive à reanálise (é passada de volta ao
   `AnalyzePersonUseCase`) e vale para o painel e para o PDF. O estado do slider é
-  limpo por `reset_key_frame_sliders()` a cada (re)análise.
+  limpo por `reset_key_frame_sliders()` (`presentation/analysis.py`) a cada
+  (re)análise.
+- **Análise de foto reaproveita o vídeo**: em vez de um pipeline paralelo, uma
+  foto vira um `AnalysisRun` de **um quadro** (`is_photo=True`, `hand_speed=None`,
+  `Video(frame_count=1)`) e o `SingleImageReader` faz a foto passar pelo mesmo
+  `DetectPeopleUseCase`. Com isso, painel, comparação, notas de métricas
+  descartadas e PDF valem sem código novo; `is_photo` serve só para rotular a
+  interface/PDF ("Foto analisada", sem FPS/trecho) e para pular a série temporal.
+  A **velocidade** sai da comparação sozinha (não há valor na foto) e a nota
+  correspondente é a mesma das métricas sem dados suficientes.
+- **Abas independentes com estado próprio**: as três abas usam `st.tabs(...,
+  on_change="rerun", key=...)`, que guarda a aba ativa na sessão e expõe
+  `tab.open`. Cada aba tem prefixos de estado próprios (`ref_*`/`ana_*` no vídeo,
+  `fref_*`/`fana_*` na foto, `mvideo_*`/`mphoto_*` na mista) e só a aba aberta
+  desenha o resultado pesado; os controles continuam sendo criados em todas as
+  abas, porque o Streamlit descarta o estado de widgets que não foram desenhados.
 - **Vídeos de exemplo**: botão na barra lateral que baixa e carrega dois vídeos
   de demonstração (mesmo caminho de URL); os campos vêm pré-preenchidos.
 - **Download robusto de URL**: prioriza formatos progressivos (sem merge) e

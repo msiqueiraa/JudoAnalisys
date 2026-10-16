@@ -1,18 +1,27 @@
 # 🥋 Judo Analysis
 
-Aplicação que compara a biomecânica de um golpe de judô entre um vídeo de
-**referência** (gabarito) e um vídeo **analisado**, medindo:
+Aplicação que compara a biomecânica de um golpe de judô entre uma **referência**
+(gabarito) e uma execução **analisada** — em **vídeo** ou em **foto** — medindo:
 
 - **Ângulo do joelho** (esquerdo e direito)
 - **Ângulo da coluna** (inclinação do tronco)
 - **Ângulo do pescoço** (inclinação da cabeça)
 - **Abertura das pernas** (ângulo entre as coxas)
-- **Velocidade do golpe** (velocidade da mão no pico do movimento)
+- **Velocidade do golpe** (velocidade da mão no pico do movimento — só em vídeo)
 
-O resultado é exibido na tela (frame-chave anotado + painel de métricas +
-gráficos interativos), pode ser assistido em um **player comparativo** (os dois
-recortes lado a lado, tocando ao mesmo tempo, com as métricas ao vivo e a
-similaridade no fim) e **baixado em PDF**.
+O app tem **três abas**:
+
+| Aba | O que compara |
+| --- | --- |
+| **Vídeo** | dois vídeos (referência x analisado), com rastreamento do atleta no trecho |
+| **Foto** | duas fotos (referência x analisada) — ou só a analisada, para ver os ângulos |
+| **Foto x vídeo** | uma foto do instante-chave contra um vídeo (gabarito ou golpe) |
+
+O resultado é exibido na tela (frame-chave/foto anotada + painel de métricas +
+gráficos interativos), no modo vídeo pode ser assistido em um **player
+comparativo** (os dois recortes lado a lado, tocando ao mesmo tempo, com as
+métricas ao vivo e a similaridade no fim) e em todos os modos é **baixado em
+PDF**.
 
 ---
 
@@ -31,6 +40,11 @@ similaridade no fim) e **baixado em PDF**.
 ---
 
 ## Como funciona
+
+Escolha a aba no topo (**Vídeo**, **Foto** ou **Foto x vídeo**) — as três usam
+os mesmos controles da barra lateral.
+
+### Aba Vídeo
 
 1. Você carrega **dois vídeos** — um de referência e um para analisar — por
    **upload** ou por **URL** (YouTube, Instagram, TikTok ou link direto). Para
@@ -102,6 +116,29 @@ similaridade no fim) e **baixado em PDF**.
      geral**;
    - baixar um **relatório em PDF** (com os gráficos empilhados e as notas).
 
+### Aba Foto
+
+1. Carregue a **foto analisada** (e a **foto de referência**, se quiser comparar).
+   Formatos aceitos: **`.png`, `.jpg`, `.jpeg`, `.webp`, `.bmp`**. Se carregar só
+   a foto analisada, o app mostra os ângulos dela (sem comparação).
+2. O app detecta as pessoas na foto e você **escolhe o atleta** — pela lista ou
+   **clicando sobre ele** na imagem (igual ao modo vídeo).
+3. Clique em **"Analisar foto"**. O resultado sai no mesmo formato do modo vídeo:
+   foto anotada com os ângulos, painel de métricas, tabela/barras de similaridade
+   e **relatório em PDF**.
+4. Uma foto é um **quadro único**: não existe **velocidade do golpe** nem
+   **evolução das métricas** (não há série temporal a desenhar). A velocidade sai
+   da tabela, dos gráficos e do score automaticamente.
+
+### Aba Foto x vídeo
+
+Útil para conferir **um instante do seu golpe** (uma foto) contra o **vídeo de
+referência** — ou o contrário (um **gabarito em foto** contra o vídeo do seu
+golpe): escolha no seletor **"Na comparação, a foto é..."** qual papel a foto tem,
+carregue o vídeo e a foto e clique em **Analisar**. A velocidade fica de fora
+(a foto não tem tempo), e a evolução das métricas mostra a **curva do vídeo com a
+foto marcada como um ponto**.
+
 ## Requisitos
 
 - **Python 3.12** — é a versão fixada no `Pipfile` (`python_version = "3.12"`) e a
@@ -143,6 +180,10 @@ streamlit run app.py
 ```
 
 O navegador abre em `http://localhost:8501`.
+
+A aba **Vídeo** (a primeira) segue os passos abaixo; as abas **Foto** e
+**Foto x vídeo** seguem os mesmos passos, trocando "vídeo" por "foto" onde fizer
+sentido (ver [Como funciona](#como-funciona)).
 
 1. (Opcional) Na barra lateral, clique em **"Carregar vídeos de exemplo"** para
    baixar automaticamente dois vídeos de judô de demonstração.
@@ -216,6 +257,11 @@ aparece na tabela, nos gráficos nem no score, e é listada em uma nota
 ("Não analisadas: ...") na tela e no PDF. Isso evita que dados espúrios de
 frames "bugados" poluam o resultado.
 
+Em **fotos** não há frames a descartar: o quadro único é todo o dado disponível,
+e o app nunca exige mais amostras do que existem. Por isso os ângulos entram na
+comparação normalmente, e só a **velocidade** fica de fora (uma foto não tem
+tempo) — ela aparece na nota "Não analisadas" e não entra no score.
+
 Se você marcar **"Ignorar velocidade do golpe"**, a velocidade é removida da
 comparação **por escolha sua** — útil quando os vídeos têm ritmos diferentes
 (*slow-motion* x normal) — e aparece em uma nota separada
@@ -254,17 +300,21 @@ judo_analysis/
 ├── application/     # Casos de uso + portas (interfaces)
 │   ├── ports/       IPoseEstimator, IVideoReader, IVideoSource,
 │   │                IReportWriter, IClipComposer
-│   └── use_cases/   DetectPeople, AnalyzePerson, CompareAnalyses,
-│                    BuildComparisonClip
+│   └── use_cases/   DetectPeople, AnalyzePerson, AnalyzePhoto, CompareAnalyses,
+│                    BuildComparisonClip, SelectKeyFrame
 ├── infrastructure/  # Adaptadores concretos
 │   ├── pose/        MediaPipePoseEstimator (Tasks API)
 │   ├── video/       OpenCVVideoReader, UploadVideoSource, UrlVideoSource,
 │   │                FfmpegClipComposer (recorte lado a lado)
+│   ├── image/       SingleImageReader (foto como "vídeo" de um quadro),
+│   │                UploadPhotoSource
 │   ├── render/      FrameAnnotator
 │   └── report/      PdfReportWriter
 └── presentation/    # UI Streamlit
-    ├── app.py
-    └── components/  (..., tracking_review, ...)
+    ├── app.py       (abas Vídeo/Foto/Foto x vídeo)
+    ├── analysis.py  (rodar/reanalisar vídeo, dicas de cor)
+    └── components/  photo_input, photo_analysis, mixed_analysis, results_view,
+                     results, person_selection, tracking_review, ...
 ```
 
 Detalhes em [`docs/arquitetura.md`](docs/arquitetura.md).
@@ -276,10 +326,11 @@ python -m pytest
 ```
 
 Os testes cobrem o domínio (ângulos, velocidade, rastreamento simples e em par,
-deduplicação de poses, cor do kimono, estatística e comparação) e a aplicação
-(caso de uso de análise com rastreamento de dois atletas que se cruzam, incluindo
-a correção ancorada), sem depender de vídeos reais. Há também um teste de fumaça
-que renderiza o app Streamlit.
+deduplicação de poses, cor do kimono, estatística e comparação — inclusive a
+comparação de **fotos**, de quadro único) e a aplicação (caso de uso de análise
+com rastreamento de dois atletas que se cruzam, incluindo a correção ancorada, e
+o caso de uso de **análise de foto**), sem depender de vídeos reais. Há também
+testes de fumaça que renderizam o app Streamlit e a **aba de foto**.
 
 ## Deploy
 
@@ -335,6 +386,8 @@ O que já está pronto no repositório:
 | "Modelo do MediaPipe não encontrado" | `pose_landmarker_full.task` ausente | Mantenha o arquivo na raiz do projeto |
 | "A dependência 'yt-dlp' não está instalada" | URL sem a lib | `pip install yt-dlp` |
 | Nenhuma pessoa detectada | Iluminação/enquadramento ruim | Ajuste o trecho ou o vídeo |
+| Nenhuma pessoa detectada na foto | Corpo cortado, de costas ou fora de quadro | Use uma foto com o corpo inteiro e o atleta em destaque |
+| Velocidade e "Evolução das métricas" não aparecem em fotos | Uma foto é um quadro único: não há tempo | Esperado — a velocidade sai da tabela, dos gráficos e do score; a evolução só existe com vídeo |
 | Pessoa errada rastreada | Oclusão/sobreposição no golpe (ex.: *uke* de costas marcado como *tori*) | Confira a **faixa de verificação**: clique na **miniatura** do frame errado para abrir a correção já naquele instante (ou no **X** para descartá-lo); mantenha **"Manter identidade na sobreposição"** ligado; se os kimonos tiverem cores diferentes, ligue a opção de cor do kimono |
 | Rastreamento alterna entre os dois atletas | O detector funde os dois corpos em uma caixa só | Já tratado: o app refaz a detecção nas metades do quadro quando o frame traz menos de dois atletas; ligue a opção de **cor do kimono** se eles tiverem cores diferentes |
 | Vídeo de URL não baixa | Link privado/bloqueado | Use upload do arquivo |

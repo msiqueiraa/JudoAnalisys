@@ -44,6 +44,7 @@ class AnalysisRun:
         frames: Metricas por frame, em ordem temporal.
         stats: Estatisticas agregadas por metrica.
         key_frame_index: Frame de maior velocidade (o "golpe").
+        is_photo: Se a analise vem de uma foto (um unico quadro).
     """
 
     label: str
@@ -53,6 +54,9 @@ class AnalysisRun:
     frames: list[FrameMetrics] = field(default_factory=list)
     stats: dict[str, MetricStats] = field(default_factory=dict)
     key_frame_index: int = 0
+    # Analise de uma imagem parada (quadro unico): sem dimensao temporal, logo
+    # sem velocidade e sem serie para desenhar.
+    is_photo: bool = False
 
     def series(self, metric: str) -> list[float]:
         """Retorna a serie temporal (valores nao nulos) de uma metrica."""

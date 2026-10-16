@@ -59,13 +59,14 @@ def render_analysis_panel(
 
     image_column, data_column = st.columns([2, 1])
     with image_column:
-        st.image(to_rgb(annotated), caption="Frame-chave do golpe", width="stretch")
+        st.image(
+            to_rgb(annotated),
+            caption="Foto analisada" if run.is_photo else "Frame-chave do golpe",
+            width="stretch",
+        )
     with data_column:
         st.markdown(f"**Metricas no golpe ({run.label})**")
-        st.caption(
-            f"Trecho analisado: {format_duration_precise(run.time_range.start)} - "
-            f"{format_duration_precise(run.time_range.end)}"
-        )
+        st.caption(_source_caption(run))
         rows = [
             {"Metrica": meta.label, "Valor": _format_value(_metric_value(metrics, meta.key), meta.unit)}
             for meta in METRICS
@@ -75,6 +76,17 @@ def render_analysis_panel(
         if not ignore_speed and run.stats.get("hand_speed"):
             peak = run.stats["hand_speed"].maximum
             st.metric("Pico de velocidade", f"{peak:.0f} px/s")
+
+
+def _source_caption(run: AnalysisRun) -> str:
+    """Legenda da origem da analise: trecho de video ou foto parada."""
+
+    if run.is_photo:
+        return "Foto analisada (quadro unico)."
+    return (
+        f"Trecho analisado: {format_duration_precise(run.time_range.start)} - "
+        f"{format_duration_precise(run.time_range.end)}"
+    )
 
 
 def _render_key_frame_slider(result: AnalysisResult, key: str) -> None:
@@ -146,17 +158,6 @@ def _current_key_frame_time(result: AnalysisResult, first: float) -> float:
     return frame.timestamp if frame is not None else first
 
 
-def reset_key_frame_sliders() -> None:
-    """Esquece o instante escolhido no slider do frame-chave.
-
-    Chamado quando a analise e (re)feita: o slider e recriado a partir do
-    resultado novo, que ja carrega a escolha do usuario quando houver.
-    """
-
-    for panel in ("ref", "ana"):
-        st.session_state.pop(f"{panel}_keyframe_slider", None)
-
-
 def _frame_step(run: AnalysisRun) -> dt.timedelta:
     """Passo do slider: um frame do video (10 ms se o FPS nao for conhecido)."""
 
@@ -206,7 +207,7 @@ def render_comparison(
 
     if excluded:
         names = ", ".join(metric.label for metric in excluded)
-        st.caption(f"Nao analisadas (dados insuficientes em um dos videos): {names}.")
+        st.caption(f"Nao analisadas (dados insuficientes em uma das analises): {names}.")
 
     ignored = comparison.ignored_metrics()
     if ignored:
@@ -214,7 +215,11 @@ def render_comparison(
         st.caption(f"Ignoradas nesta comparacao: {names}.")
 
     analyzed_keys = comparison.analyzed_keys()
-    chart_keys = [key for key in TIME_SERIES_METRICS if key in analyzed_keys]
+    # Sem serie temporal (as duas fotos tem um quadro so) nao ha evolucao a mostrar.
+    has_series = len(reference_run.frames) > 1 or len(analyzed_run.frames) > 1
+    chart_keys = (
+        [key for key in TIME_SERIES_METRICS if key in analyzed_keys] if has_series else []
+    )
 
     if chart_keys:
         st.markdown("**Evolucao das metricas**")
@@ -248,7 +253,18 @@ def _line_chart(reference: AnalysisRun, analyzed: AnalysisRun, key: str) -> go.F
         has_data = True
         times = [timestamp - run.time_range.start for timestamp, _ in points]
         values = [value for _, value in points]
-        figure.add_trace(go.Scatter(x=times, y=values, mode="lines", name=name, line={"color": color}))
+        # Uma foto tem um unico ponto: sem marcador a linha nao apareceria.
+        single_point = len(points) == 1
+        figure.add_trace(
+            go.Scatter(
+                x=times,
+                y=values,
+                mode="markers" if single_point else "lines",
+                name=name,
+                line={"color": color},
+                marker={"color": color, "size": 12, "symbol": "diamond"},
+            )
+        )
 
     if not has_data:
         return None

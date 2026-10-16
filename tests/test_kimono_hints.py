@@ -1,6 +1,6 @@
 """Testes da dica de cor do kimono guardada entre analise e reanalise.
 
-O erro original: ``_run_analysis`` escrevia em ``ref_different_kimono`` /
+O erro original: a analise escrevia em ``ref_different_kimono`` /
 ``ana_different_kimono``, que sao as chaves dos checkboxes ja instanciados no
 mesmo run, e o Streamlit recusa isso (``StreamlitWidgetAlreadyInstantiatedError``).
 """
@@ -14,14 +14,15 @@ from streamlit.testing.v1 import AppTest
 _SCRIPT = """
 import streamlit as st
 
-from judo_analysis.presentation.app import _kimono_hints, _remember_kimono_hints
+from judo_analysis.presentation.analysis import kimono_hint, remember_kimono_hint
 
 st.checkbox("Os dois atletas tem kimonos de cores diferentes", key="ref_different_kimono")
 st.checkbox("Os dois atletas tem kimonos de cores diferentes", key="ana_different_kimono")
 
-st.session_state["antes"] = _kimono_hints()
-_remember_kimono_hints(True, False)
-st.session_state["depois"] = _kimono_hints()
+st.session_state["antes"] = (kimono_hint("ref"), kimono_hint("ana"))
+remember_kimono_hint("ref", True)
+remember_kimono_hint("ana", False)
+st.session_state["depois"] = (kimono_hint("ref"), kimono_hint("ana"))
 """
 
 

@@ -14,7 +14,7 @@ import math
 from collections.abc import Iterator, Sequence
 from dataclasses import dataclass
 
-from ...config import MIN_VISIBLE_LANDMARKS, PAIR_SEED_SEARCH_FRAMES
+from ...config import PAIR_SEED_SEARCH_FRAMES
 from ...domain.entities.analysis import AnalysisRun, FrameMetrics
 from ...domain.entities.pose import Pose
 from ...domain.entities.video import TimeRange, Video
@@ -25,6 +25,7 @@ from ...domain.services.speed_calculator import SpeedCalculator
 from ...domain.services.statistics import aggregate_run, nearest_frame
 from ...domain.value_objects.gi_color import GiColor
 from ..dto import AnalysisResult, PersonSelection, TrackingSample
+from ..pose_detection import is_measurable_pose
 from ..ports.pose_estimator import IPoseEstimator
 from ..ports.video_reader import IVideoReader
 
@@ -249,7 +250,7 @@ class AnalyzePersonUseCase:
             if _is_excluded(detection.timestamp, exclude):
                 excluded_count += 1
                 continue
-            if not _is_measurable(pose):
+            if not is_measurable_pose(pose):
                 continue
 
             angles = self._angles.compute(pose)
@@ -325,12 +326,6 @@ def _nearby_indexes(center: int, count: int, radius: int) -> Iterator[int]:
             yield after
         if before >= 0:
             yield before
-
-
-def _is_measurable(pose: Pose | None) -> bool:
-    """Frame valido: pose rastreada com landmarks visiveis suficientes."""
-
-    return pose is not None and pose.visible_count >= MIN_VISIBLE_LANDMARKS
 
 
 def _is_excluded(timestamp: float, ranges: Sequence[TimeRange]) -> bool:

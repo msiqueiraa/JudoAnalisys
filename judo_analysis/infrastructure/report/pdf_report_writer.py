@@ -80,7 +80,7 @@ class PdfReportWriter(IReportWriter):
         story.extend(self._ignored_note(comparison, styles))
         story.append(Spacer(1, 0.5 * cm))
 
-        story.append(Paragraph("Frame-chave do golpe", styles["Heading2"]))
+        story.append(Paragraph(_frames_title(reference[0], analyzed[0]), styles["Heading2"]))
         story.append(self._frames_row(reference, analyzed))
         story.append(Spacer(1, 0.5 * cm))
 
@@ -102,11 +102,13 @@ class PdfReportWriter(IReportWriter):
             ["Pessoa", str(reference.person_id + 1), str(analyzed.person_id + 1)],
             [
                 "Trecho",
-                _trecho(reference),
-                _trecho(analyzed),
+                _source(reference),
+                _source(analyzed),
             ],
-            ["FPS", f"{reference.video.fps:.1f}", f"{analyzed.video.fps:.1f}"],
         ]
+        # Uma foto nao tem FPS nem duracao: a linha so aparece com video.
+        if not (reference.is_photo and analyzed.is_photo):
+            rows.append(["FPS", _fps(reference), _fps(analyzed)])
         table = Table(rows, colWidths=[3 * cm, 7 * cm, 7 * cm])
         table.setStyle(_table_style())
         return table
@@ -147,7 +149,7 @@ class PdfReportWriter(IReportWriter):
         return [
             Spacer(1, 0.2 * cm),
             Paragraph(
-                f"<i>Nao analisadas (dados insuficientes em um dos videos): {names}.</i>",
+                f"<i>Nao analisadas (dados insuficientes em uma das analises): {names}.</i>",
                 styles["BodyText"],
             ),
         ]
@@ -199,6 +201,10 @@ class PdfReportWriter(IReportWriter):
         analyzed: AnalysisRun,
         comparison: ComparisonResult,
     ) -> list[Path]:
+        # Sem serie temporal (as duas analises sao fotos) nao ha grafico a fazer.
+        if len(reference.frames) < 2 and len(analyzed.frames) < 2:
+            return []
+
         analyzed_keys = comparison.analyzed_keys()
         keys = [key for key in TIME_SERIES_METRICS if key in analyzed_keys]
 
@@ -225,7 +231,11 @@ class PdfReportWriter(IReportWriter):
             has_data = True
             times = [timestamp - run.time_range.start for timestamp, _ in points]
             values = [value for _, value in points]
-            axis.plot(times, values, color=color, label=name)
+            if len(points) > 1:
+                axis.plot(times, values, color=color, label=name)
+            else:
+                # Uma foto tem um unico ponto: o marcador e o que a torna visivel.
+                axis.plot(times, values, color=color, marker="D", linestyle="none", label=name)
 
         if not has_data:
             plt.close(figure)
@@ -244,11 +254,29 @@ class PdfReportWriter(IReportWriter):
         return path
 
 
-def _trecho(run: AnalysisRun) -> str:
+def _source(run: AnalysisRun) -> str:
+    """Origem da analise: trecho de video ou foto parada."""
+
+    if run.is_photo:
+        return "Foto (quadro unico)"
     return (
         f"{format_duration_precise(run.time_range.start)} - "
         f"{format_duration_precise(run.time_range.end)}"
     )
+
+
+def _fps(run: AnalysisRun) -> str:
+    """FPS do video (``--`` quando o lado analisado e uma foto)."""
+
+    return "--" if run.is_photo else f"{run.video.fps:.1f}"
+
+
+def _frames_title(reference: AnalysisRun, analyzed: AnalysisRun) -> str:
+    """Titulo da secao das imagens: frame-chave do golpe ou fotos analisadas."""
+
+    if reference.is_photo and analyzed.is_photo:
+        return "Fotos analisadas"
+    return "Frame-chave do golpe"
 
 
 def _fmt(value: float | None, unit: str) -> str:

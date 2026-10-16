@@ -4,24 +4,33 @@ from __future__ import annotations
 
 import streamlit as st
 
-from ..application.dto import AnalysisResult, PersonSelection
-from ..application.use_cases import AnalyzePersonUseCase, CompareAnalysesUseCase
+from ..application.dto import PersonSelection
+from ..application.use_cases import CompareAnalysesUseCase
 from ..config import DEFAULT_KEEP_IDENTITY, DEFAULT_NUM_POSES
 from ..domain.entities.video import TimeRange
 from ..domain.metrics_catalog import SPEED_METRICS
-from ..infrastructure.video import OpenCVVideoReader
-from .components import (
-    render_analysis_panel,
-    render_comparison,
-    render_comparison_clip,
-    render_example_loader,
-    render_person_selection,
-    render_report_download,
-    render_tracking_review,
-    render_video_input,
+from .analysis import (
+    analyze_video,
+    forget_outputs,
+    remember_kimono_hint,
     reset_key_frame_sliders,
 )
-from .resources import make_pose_detector, read_metadata
+from .components import (
+    SideSpec,
+    render_example_loader,
+    render_mixed_mode,
+    render_person_selection,
+    render_photo_mode,
+    render_results_view,
+    render_video_input,
+)
+from .resources import read_metadata
+
+# Chaves de estado da aba de video.
+REFERENCE_STATE = "reference_result"
+ANALYZED_STATE = "analyzed_result"
+REPORT_KEY = "report"
+_CLIP_KEY = "clip"
 
 
 def main() -> None:
@@ -53,6 +62,33 @@ def main() -> None:
     )
     render_example_loader()
 
+    video_tab, photo_tab, mixed_tab = st.tabs(
+        ["Video", "Foto", "Foto x video"], on_change="rerun", key="analysis_mode"
+    )
+    with video_tab:
+        _render_video_mode(num_poses, keep_identity, ignore_speed, _is_open(video_tab))
+    with photo_tab:
+        render_photo_mode(num_poses, _is_open(photo_tab))
+    with mixed_tab:
+        render_mixed_mode(num_poses, keep_identity, ignore_speed, _is_open(mixed_tab))
+
+
+def _is_open(tab) -> bool:
+    """Indica se a aba esta aberta neste run.
+
+    A aba aberta e a unica que desenha o resultado (tabelas, graficos e PDF): as
+    outras rodam apenas os controles, que precisam continuar vivos para o
+    Streamlit nao descartar o que o usuario ja escolheu.
+    """
+
+    return tab.open is not False
+
+
+def _render_video_mode(
+    num_poses: int, keep_identity: bool, ignore_speed: bool, active: bool = True
+) -> None:
+    """Aba de video: dois videos (referencia e analisado) lado a lado."""
+
     reference_column, analyzed_column = st.columns(2)
     with reference_column:
         reference_path = render_video_input("Video de referencia (gabarito)", "ref")
@@ -81,7 +117,7 @@ def main() -> None:
 
     ready = all([reference_selection, reference_range, analyzed_selection, analyzed_range])
     if st.button("Analisar", type="primary", disabled=not ready):
-        _run_analysis(
+        _run_video_analysis(
             reference_path,
             reference_selection,
             reference_range,
@@ -94,10 +130,11 @@ def main() -> None:
             analyzed_diff,
         )
 
-    _render_results(num_poses, ignore_speed, keep_identity)
+    if active:
+        _render_video_results(num_poses, ignore_speed, keep_identity)
 
 
-def _run_analysis(
+def _run_video_analysis(
     reference_path: str,
     reference_selection: PersonSelection | None,
     reference_range: TimeRange | None,
@@ -114,11 +151,12 @@ def _run_analysis(
 
     # Guardado para as reanalises (corrigir pessoa / excluir frames) manterem a
     # mesma dica de cor do kimono.
-    _remember_kimono_hints(reference_diff, analyzed_diff)
+    remember_kimono_hint("ref", reference_diff)
+    remember_kimono_hint("ana", analyzed_diff)
 
     try:
         with st.spinner("Analisando referencia..."):
-            reference_result = _analyze(
+            reference_result = analyze_video(
                 "Referencia",
                 reference_path,
                 reference_selection,
@@ -128,7 +166,7 @@ def _run_analysis(
                 different_kimono=reference_diff,
             )
         with st.spinner("Analisando video analisado..."):
-            analyzed_result = _analyze(
+            analyzed_result = analyze_video(
                 "Analisado",
                 analyzed_path,
                 analyzed_selection,
@@ -141,199 +179,57 @@ def _run_analysis(
         st.error(f"Falha na analise: {error}")
         return
 
-    st.session_state["reference_result"] = reference_result
-    st.session_state["analyzed_result"] = analyzed_result
-    st.session_state.pop("report_bytes", None)
-    st.session_state.pop("clip_path", None)
+    st.session_state[REFERENCE_STATE] = reference_result
+    st.session_state[ANALYZED_STATE] = analyzed_result
+    forget_outputs(REPORT_KEY, _CLIP_KEY)
     # O slider do frame-chave comeca de novo no pico de velocidade.
     reset_key_frame_sliders()
     st.rerun()
 
 
-def _remember_kimono_hints(reference_diff: bool, analyzed_diff: bool) -> None:
-    """Guarda a dica de cor usada na analise, para as reanalises reusarem.
-
-    Fica em chaves proprias (``ref_kimono_hint`` / ``ana_kimono_hint``) e nao nas
-    chaves dos checkboxes: o Streamlit proibe escrever na chave de um widget ja
-    instanciado neste mesmo run (o botao "Analisar" roda depois dos checkboxes).
-    """
-
-    st.session_state["ref_kimono_hint"] = reference_diff
-    st.session_state["ana_kimono_hint"] = analyzed_diff
-
-
-def _kimono_hints() -> tuple[bool, bool]:
-    """Dica de cor (referencia, analisado) usada na analise de cada video."""
-
-    return (
-        bool(st.session_state.get("ref_kimono_hint", False)),
-        bool(st.session_state.get("ana_kimono_hint", False)),
-    )
-
-
-def _analyze(
-    label: str,
-    path: str,
-    selection: PersonSelection,
-    time_range: TimeRange,
-    num_poses: int,
-    keep_identity: bool,
-    anchor_time: float | None = None,
-    exclude: list[TimeRange] | None = None,
-    different_kimono: bool = False,
-    key_frame_time: float | None = None,
-) -> AnalysisResult:
-    detector = make_pose_detector(num_poses)
-    with OpenCVVideoReader(path) as reader:
-        use_case = AnalyzePersonUseCase(
-            reader,
-            detector,
-            keep_identity=keep_identity,
-            different_kimono=different_kimono,
-        )
-        return use_case.execute(
-            label, time_range, selection, anchor_time, exclude, key_frame_time
-        )
-
-
-def _render_results(num_poses: int, ignore_speed: bool, keep_identity: bool) -> None:
-    reference_result = st.session_state.get("reference_result")
-    analyzed_result = st.session_state.get("analyzed_result")
+def _render_video_results(num_poses: int, ignore_speed: bool, keep_identity: bool) -> None:
+    reference_result = st.session_state.get(REFERENCE_STATE)
+    analyzed_result = st.session_state.get(ANALYZED_STATE)
     if not (reference_result and analyzed_result):
         return
-
-    reference_diff, analyzed_diff = _kimono_hints()
 
     ignore = set(SPEED_METRICS) if ignore_speed else set()
     comparison = CompareAnalysesUseCase().execute(
         reference_result.run, analyzed_result.run, ignore
     )
 
-    st.divider()
-    st.header("Resultado da analise")
-
-    render_comparison_clip(reference_result, analyzed_result, comparison)
-
-    st.divider()
-    left, right = st.columns(2)
-    with left:
-        render_analysis_panel(reference_result, "ref", ignore_speed)
-        render_tracking_review(
+    render_results_view(
+        SideSpec(
             reference_result,
-            num_poses,
-            on_correct=_correction_callback(
-                "reference_result", reference_result, num_poses, keep_identity, reference_diff
-            ),
-            on_exclude=_exclusion_callback(
-                "reference_result", reference_result, num_poses, keep_identity, reference_diff
-            ),
-            key="ref_review",
-        )
-    with right:
-        render_analysis_panel(analyzed_result, "ana", ignore_speed)
-        render_tracking_review(
+            "ref",
+            REFERENCE_STATE,
+            review=True,
+            hint_slot="ref",
+            ignore_speed=ignore_speed,
+        ),
+        SideSpec(
             analyzed_result,
-            num_poses,
-            on_correct=_correction_callback(
-                "analyzed_result", analyzed_result, num_poses, keep_identity, analyzed_diff
-            ),
-            on_exclude=_exclusion_callback(
-                "analyzed_result", analyzed_result, num_poses, keep_identity, analyzed_diff
-            ),
-            key="ana_review",
-        )
-
-    st.divider()
-    st.subheader("Comparacao")
-    render_comparison(reference_result.run, analyzed_result.run, comparison)
-
-    st.divider()
-    render_report_download(reference_result, analyzed_result, comparison)
-
-
-def _correction_callback(
-    state_key: str, result: AnalysisResult, num_poses: int, keep_identity: bool, different_kimono: bool
-):
-    def correct(selection: PersonSelection, anchor_time: float) -> None:
-        _reanalyze(
-            state_key,
-            result,
-            num_poses,
-            keep_identity,
-            selection=selection,
-            anchor_time=anchor_time,
-            different_kimono=different_kimono,
-        )
-
-    return correct
-
-
-def _exclusion_callback(
-    state_key: str, result: AnalysisResult, num_poses: int, keep_identity: bool, different_kimono: bool
-):
-    def exclude(ranges: list[TimeRange]) -> None:
-        _reanalyze(
-            state_key,
-            result,
-            num_poses,
-            keep_identity,
-            exclude=ranges,
-            different_kimono=different_kimono,
-        )
-
-    return exclude
-
-
-def _reanalyze(
-    state_key: str,
-    result: AnalysisResult,
-    num_poses: int,
-    keep_identity: bool,
-    *,
-    selection: PersonSelection | None = None,
-    anchor_time: float | None = None,
-    exclude: list[TimeRange] | None = None,
-    different_kimono: bool = False,
-) -> None:
-    chosen = selection or result.selection
-    if chosen is None:
-        st.error("Nao foi possivel reanalisar: a pessoa selecionada nao esta disponivel.")
-        return
-
-    effective_exclude = result.excluded_ranges if exclude is None else exclude
-    try:
-        with st.spinner("Reanalisando..."):
-            new_result = _analyze(
-                result.run.label,
-                result.run.video.path,
-                chosen,
-                result.run.time_range,
-                num_poses,
-                keep_identity,
-                anchor_time,
-                effective_exclude,
-                different_kimono,
-                # O frame-chave escolhido pelo usuario sobrevive a reanalise.
-                result.key_frame_time,
-            )
-    except Exception as error:  # noqa: BLE001 - exibimos o erro ao usuario
-        st.error(f"Falha ao reanalisar: {error}")
-        return
-
-    st.session_state[state_key] = new_result
-    st.session_state.pop("report_bytes", None)
-    st.session_state.pop("clip_path", None)
-    # O slider e recriado a partir do resultado novo (que mantem a escolha).
-    reset_key_frame_sliders()
-    st.rerun()
+            "ana",
+            ANALYZED_STATE,
+            review=True,
+            hint_slot="ana",
+            ignore_speed=ignore_speed,
+        ),
+        comparison,
+        clip=True,
+        report_key=REPORT_KEY,
+        outputs=(REPORT_KEY, _CLIP_KEY),
+        num_poses=num_poses,
+        keep_identity=keep_identity,
+    )
 
 
 def _render_header() -> None:
     st.title("🥋 Judo Analysis")
     st.caption(
-        "Compare a biomecanica de um golpe de judo entre um video de referencia e "
-        "um video analisado: joelho, coluna, pescoco, abertura das pernas e "
-        "velocidade do golpe."
+        "Compare a biomecanica de um golpe de judo entre videos (referencia e "
+        "analisado) ou em fotos do instante-chave: joelho, coluna, pescoco, "
+        "abertura das pernas e velocidade do golpe."
     )
 
 

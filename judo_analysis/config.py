@@ -26,6 +26,13 @@ TEMP_DIR = PROJECT_ROOT / ".cache" / "videos"
 # .mov/.avi/.mkv e codecs que o navegador nao toca).
 PREVIEW_DIR = PROJECT_ROOT / ".cache" / "preview"
 
+# Pasta onde as fotos enviadas para a analise de foto sao gravadas.
+PHOTO_DIR = PROJECT_ROOT / ".cache" / "photos"
+
+# FPS nominal de uma foto (quadro unico). Nao representa duracao real: existe
+# para as conversoes de tempo (slider, formatacao) continuarem validas.
+PHOTO_FPS = 1.0
+
 # Numero minimo de frames validos para uma metrica entrar na comparacao.
 # Metricas medidas em pouquissimos frames (dados espurios) sao descartadas.
 MIN_METRIC_SAMPLES = 3

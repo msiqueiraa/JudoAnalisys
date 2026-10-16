@@ -107,7 +107,11 @@ class PoseComparator:
 
 
 def _enough_data(stats: MetricStats, total_frames: int) -> bool:
-    """Indica se a metrica tem dados suficientes para ser comparada."""
+    """Indica se a metrica tem dados suficientes para ser comparada.
+
+    O pedido nunca passa do total de frames da analise: uma foto tem um unico
+    quadro, e exigir mais amostras do que existem barraria a comparacao inteira.
+    """
 
     required = max(MIN_METRIC_SAMPLES, math.ceil(MIN_METRIC_COVERAGE * total_frames))
-    return stats.count >= required
+    return stats.count >= min(required, max(total_frames, 1))

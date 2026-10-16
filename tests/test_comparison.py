@@ -119,6 +119,36 @@ def test_metric_missing_in_one_video_is_excluded() -> None:
     assert result.overall_similarity > 0.0
 
 
+def test_single_frame_analyses_are_compared() -> None:
+    """Uma foto tem um unico quadro: ele e todo o dado disponivel."""
+
+    reference = _run("ref", knee=90.0, speed=200.0, frames=1)
+    analyzed = _run("ana", knee=90.0, speed=200.0, frames=1)
+    reference.is_photo = True
+    analyzed.is_photo = True
+
+    result = PoseComparator().compare(reference, analyzed)
+
+    assert "knee_left" in result.analyzed_keys()
+    assert result.overall_similarity == 100.0
+
+
+def test_photo_against_video_leaves_the_speed_out() -> None:
+    """A foto nao tem velocidade: a metrica sai da comparacao sozinha."""
+
+    video = _run("ref", knee=90.0, speed=200.0)
+    photo = _run("ana", knee=90.0, speed=200.0, frames=1)
+    photo.frames[0].hand_speed = None
+    photo.is_photo = True
+    aggregate_run(photo)
+
+    result = PoseComparator().compare(video, photo)
+
+    assert "knee_left" in result.analyzed_keys()
+    assert "hand_speed" not in result.analyzed_keys()
+    assert "hand_speed" in {metric.key for metric in result.excluded_metrics()}
+
+
 def test_all_metrics_excluded_returns_none_overall() -> None:
     reference = _run("ref", knee=90.0, speed=200.0)
     analyzed = _run("ana", knee=90.0, speed=200.0)

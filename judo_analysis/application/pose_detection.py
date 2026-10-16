@@ -101,10 +101,20 @@ def detect_in_halves(
         half = np.ascontiguousarray(frame[:, start:end])
         fraction = (end - start) / width
         for pose in estimator.detect(half, timestamp_ms=timestamp_ms):
-            if pose.visible_count < MIN_VISIBLE_LANDMARKS:
+            if not is_measurable_pose(pose):
                 continue
             poses.append(_shift_pose(pose, left, fraction))
     return poses
+
+
+def is_measurable_pose(pose: Pose | None) -> bool:
+    """Pose com landmarks visiveis suficientes para medir os angulos.
+
+    Vale para um frame de video rastreado e para a pose escolhida em uma foto:
+    abaixo do minimo os angulos saem de pontos inventados pelo detector.
+    """
+
+    return pose is not None and pose.visible_count >= MIN_VISIBLE_LANDMARKS
 
 
 def _shift_pose(pose: Pose, left: float, fraction: float) -> Pose:

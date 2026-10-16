@@ -2,11 +2,9 @@
 
 from __future__ import annotations
 
-import re
-from pathlib import Path
-
 from ...application.ports.video_source import IVideoSource
 from ...config import TEMP_DIR
+from ..files import safe_name
 
 
 class UploadVideoSource(IVideoSource):
@@ -18,13 +16,6 @@ class UploadVideoSource(IVideoSource):
 
     def resolve(self) -> str:
         TEMP_DIR.mkdir(parents=True, exist_ok=True)
-        safe_name = _safe_name(self._filename)
-        destination = TEMP_DIR / safe_name
+        destination = TEMP_DIR / safe_name(self._filename, "upload.mp4")
         destination.write_bytes(self._data)
         return str(destination)
-
-
-def _safe_name(filename: str) -> str:
-    name = Path(filename).name
-    name = re.sub(r"[^A-Za-z0-9._-]", "_", name)
-    return name or "upload.mp4"
