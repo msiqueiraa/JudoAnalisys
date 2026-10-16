@@ -25,6 +25,7 @@ similaridade no fim) e **baixado em PDF**.
 - [Métricas](#métricas)
 - [Arquitetura](#arquitetura)
 - [Testes](#testes)
+- [Deploy](#deploy)
 - [Solução de problemas](#solução-de-problemas)
 
 ---
@@ -103,7 +104,9 @@ similaridade no fim) e **baixado em PDF**.
 
 ## Requisitos
 
-- **Python 3.12** (compatível com 3.10/3.11)
+- **Python 3.12** — é a versão fixada no `Pipfile` (`python_version = "3.12"`) e a
+  usada no deploy. O `requirements.txt` não fixa versão, então o código roda em
+  3.10+, mas o caminho **pipenv** espera 3.12.
 - Webcam/câmera não é necessária; apenas os arquivos de vídeo
 - O modelo `pose_landmarker_full.task` já está incluído na raiz do projeto
 
@@ -273,6 +276,53 @@ deduplicação de poses, cor do kimono, estatística e comparação) e a aplica�
 a correção ancorada), sem depender de vídeos reais. Há também um teste de fumaça
 que renderiza o app Streamlit.
 
+## Deploy
+
+### Streamlit Community Cloud
+
+1. Suba a branch para o GitHub e abra [share.streamlit.io](https://share.streamlit.io)
+   → **Create app** → *Yup, I have an app*.
+2. Preencha **Repository** (este repositório), **Branch** (ex.: `main`, depois do
+   merge) e **Main file path** = `app.py`.
+3. Em **Advanced settings → Python version**, escolha **3.12** — isso **não é
+   opcional**: o `Pipfile` fixa `python_version = "3.12"` e o `numpy` travado em
+   `1.26.4` (exigido pelo MediaPipe/OpenCV, `numpy<2`) **não tem wheel para
+   Python 3.13** — em outra versão o build tenta compilar o numpy do zero e falha.
+4. Escolha o **subdomínio** (`seu-app.streamlit.app`) e clique em **Deploy**.
+
+O que já está pronto no repositório:
+
+| Arquivo | Papel no deploy |
+| --- | --- |
+| `app.py` | Entrypoint — é o caminho pedido em *Main file path* |
+| `Pipfile` + `Pipfile.lock` | Dependências Python. O Community Cloud usa **pipenv** quando existe `Pipfile`, e ele tem **prioridade sobre o `requirements.txt`** |
+| `packages.txt` | Bibliotecas de sistema (`libgl1`, `libglib2.0-0`, `libgomp1`…) exigidas pelo OpenCV/MediaPipe no Linux |
+| `.streamlit/config.toml` | Limite de upload (500 MB) e telemetria desligada |
+| `pose_landmarker_full.task` | Modelo do MediaPipe versionado na raiz (~9 MB) |
+
+> **O `Pipfile.lock` precisa estar em dia.** Como o deploy instala por pipenv,
+> qualquer mudança no `Pipfile` exige rodar `pipenv lock` e commitar o lock —
+> senão o build falha ou resolve versões diferentes das testadas. Antes de subir,
+> rode `pipenv verify`.
+
+> **Só um arquivo de dependências vale.** Como o `Pipfile` tem prioridade, o
+> `requirements.txt` é **ignorado** no deploy. Ele continua útil para quem instala
+> com `pip` (ver [Instalação](#instalação)).
+
+### Limitações do Community Cloud (importante neste app)
+
+- **Disco efêmero**: `.cache/videos` e `.cache/preview` somem a cada reinício —
+  vídeos de URL são baixados de novo.
+- **Download de URL em nuvem**: o YouTube costuma bloquear IPs de datacenter
+  ("Sign in to confirm you're not a bot"). No deploy, prefira **upload do arquivo**.
+- **Recursos**: a análise (MediaPipe multi-pose + OpenCV + encode H.264 do recorte)
+  é pesada; trechos longos podem estourar tempo/memória e o app **hiberna** por
+  inatividade. Use trechos curtos (2-3 s) e resolução moderada.
+- **Domínio próprio**: o Community Cloud só permite subdomínio `*.streamlit.app`.
+  Para usar seu domínio, hospede em container (Fly.io, Render, Cloud Run, VPS)
+  atrás de um proxy (Caddy/Nginx) — ou mascare com um `iframe` apontando para
+  `https://seu-app.streamlit.app/?embed=true`.
+
 ## Solução de problemas
 
 | Problema | Causa provável | Solução |
@@ -289,3 +339,7 @@ que renderiza o app Streamlit.
 | Aviso `use_container_width` no console | Versão antiga do Streamlit | Garanta `streamlit>=1.50` (o código já usa a API nova `width="stretch"`) |
 | `ConnectionResetError [WinError 10054]` / `Exception in callback _ProactorBasePipeTransport...` | Ruído do asyncio no Windows | **Inofensivo** — ocorre quando o navegador fecha/reconecta; pode ignorar |
 | Logs do MediaPipe (XNNPACK, `inference_feedback_manager`, NORM_RECT…) | Avisos internos do TFLite/absl escritos direto no `stderr` | **Já silenciados**: `configure_logging()` + `suppress_native_stderr()` capturam o fd 2 durante as chamadas nativas. Para ver os avisos (depuração), rode com `JUDO_SUPPRESS_NATIVE_STDERR=0` |
+| Build falha: *"Your Pipfile requires python_version 3.12"* | A versão de Python do app difere da fixada no `Pipfile` | Em **Advanced settings → Python version**, selecione **3.12** |
+| Build falha: `libGL.so.1` / `libgomp.so.1` não encontrada | Faltam bibliotecas de sistema no Linux | Mantenha o `packages.txt` (`libgl1`, `libglib2.0-0`, `libgomp1`) na raiz do repositório |
+| Deploy instala versões diferentes das testadas | `Pipfile.lock` desatualizado em relação ao `Pipfile` | Rode `pipenv lock` e commite o `Pipfile.lock` |
+| App demora a abrir no Community Cloud | Hibernação por inatividade | Normal — o primeiro acesso reacende o app |
